@@ -1,5 +1,5 @@
 import path from "node:path";
-import * as z from "zod/v4";
+import { SecretsOutput } from "@repo-radar/shared";
 import type { Task, CollectContext, CollectResult, NormalizedFinding } from "../types.js";
 import { walkFiles, readTextSafe, rel } from "../util.js";
 
@@ -35,21 +35,6 @@ For each real leak:
 - confidence: how sure you are this is a real secret (lower for ambiguous cases).
 
 Return an empty list if every candidate is a placeholder or false positive.`;
-
-const SecretsOutput = z.object({
-  secrets: z.array(
-    z.object({
-      file: z.string().describe("Repo-relative file path from the candidate"),
-      line: z.number().nullable().describe("1-indexed line, or null"),
-      kind: z.string().describe("Type of secret (e.g. AWS access key, GitHub token)"),
-      severity: z.enum(["low", "medium", "high", "critical"]),
-      risk: z.string().describe("Blast radius if leaked. Max 2 sentences."),
-      recommendation: z.string().describe("One sentence: rotate + move to env/secret manager."),
-      confidence: z.number().describe("0.0-1.0 likelihood this is a REAL secret, not a placeholder"),
-    }),
-  ),
-});
-type SecretsOutput = z.infer<typeof SecretsOutput>;
 
 interface SecretPattern {
   kind: string;
@@ -109,11 +94,19 @@ export const secretsScanTask: Task<typeof SecretsOutput> = {
   outputSchema: SecretsOutput,
 
   async collect(ctx: CollectContext): Promise<CollectResult> {
-    const files = walkFiles(ctx.repoDir, {
+    let files = walkFiles(ctx.repoDir, {
       excludes: ctx.excludedPaths,
       includeDotFiles: true,
       maxFiles: 4000,
     });
+    // Incremental: only re-scan files changed since the last completed scan.
+    if (ctx.changedFiles !== null) {
+      const changed = new Set(ctx.changedFiles);
+      files = files.filter((f) => changed.has(rel(ctx.repoDir, f)));
+      if (files.length === 0) {
+        return { evidence: null, itemCount: 0, note: "No relevant files changed (incremental)" };
+      }
+    }
     const candidates: Candidate[] = [];
     let truncated = 0;
 

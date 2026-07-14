@@ -1,4 +1,4 @@
-import { useTasks, useHealth } from "../api/hooks.js";
+import { useTasks, useHealth, useSettings, useUpdateSettings } from "../api/hooks.js";
 import { Card, EmptyState } from "../components/primitives.js";
 
 const AGENT_ICON: Record<string, string> = {
@@ -6,11 +6,20 @@ const AGENT_ICON: Record<string, string> = {
   code: "🧩",
   documentation: "📚",
   reporting: "📝",
+  validation: "🔍",
 };
 
 export function Agents() {
   const tasks = useTasks();
   const health = useHealth();
+  const settings = useSettings();
+  const update = useUpdateSettings();
+
+  const toggleTask = (taskId: string, enabled: boolean) => {
+    const current = settings.data?.disabledTasks ?? [];
+    const next = enabled ? current.filter((id) => id !== taskId) : Array.from(new Set([...current, taskId]));
+    update.mutate({ disabledTasks: next });
+  };
 
   return (
     <div>
@@ -19,6 +28,7 @@ export function Agents() {
           <div className="page-title">Agents</div>
           <div className="page-sub">
             The task registry — each task is a deterministic collector script plus a specialized agent.
+            Toggles set the default task selection for new scans.
             {health.data && ` Default model: ${health.data.defaultModel}.`}
           </div>
         </div>
@@ -31,13 +41,24 @@ export function Agents() {
       ) : (
         <div className="grid-3">
           {tasks.data.map((t) => (
-            <Card key={t.id}>
-              <div className="row" style={{ marginBottom: 10 }}>
-                <span style={{ fontSize: 26 }}>{AGENT_ICON[t.agent] ?? "🤖"}</span>
-                <div>
-                  <div style={{ fontWeight: 650 }}>{t.title}</div>
-                  <div className="mono">{t.agent} agent · effort: {t.effort}</div>
+            <Card key={t.id} className={t.enabled ? "" : "card-disabled"}>
+              <div className="spread" style={{ marginBottom: 10 }}>
+                <div className="row">
+                  <span style={{ fontSize: 26 }}>{AGENT_ICON[t.agent] ?? "🤖"}</span>
+                  <div>
+                    <div style={{ fontWeight: 650 }}>{t.title}</div>
+                    <div className="mono">{t.agent} agent · effort: {t.effort}</div>
+                  </div>
                 </div>
+                <button
+                  className={`switch ${t.enabled ? "on" : ""}`}
+                  role="switch"
+                  aria-checked={t.enabled}
+                  title={t.enabled ? "Enabled for new scans — click to disable" : "Disabled — click to enable"}
+                  onClick={() => toggleTask(t.id, !t.enabled)}
+                >
+                  <span className="knob" />
+                </button>
               </div>
               <div className="muted" style={{ fontSize: "var(--rr-fs-350)", lineHeight: 1.5, marginBottom: 12 }}>
                 {t.description}
@@ -67,6 +88,14 @@ export function Agents() {
                   <div className="usage-metric" style={{ display: "flex", flexDirection: "column" }}>
                     <span className="k">runs</span>
                     <span className="v">{t.stats.runs}</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="usage-metric" style={{ display: "flex", flexDirection: "column" }}>
+                    <span className="k">feedback</span>
+                    <span className="v">
+                      👍{t.feedback.up} 👎{t.feedback.down}
+                    </span>
                   </div>
                 </div>
               </div>

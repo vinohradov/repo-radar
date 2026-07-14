@@ -39,6 +39,9 @@ export function pricingFor(modelId: string): ModelPricing {
   return MODELS.find((m) => m.id === modelId) ?? MODELS[0];
 }
 
+/** The Message Batches API is billed at 50% of standard pricing. */
+export const BATCH_DISCOUNT = 0.5;
+
 export function estimateCostUsd(
   modelId: string,
   usage: {
@@ -47,12 +50,14 @@ export function estimateCostUsd(
     cacheCreationTokens: number;
     cacheReadTokens: number;
   },
+  opts?: { batch?: boolean },
 ): number {
   const p = pricingFor(modelId);
-  const cost =
+  let cost =
     (usage.inputTokens / 1_000_000) * p.inputPerMtok +
     (usage.outputTokens / 1_000_000) * p.outputPerMtok +
     (usage.cacheReadTokens / 1_000_000) * p.cacheReadPerMtok +
     (usage.cacheCreationTokens / 1_000_000) * p.cacheWritePerMtok;
+  if (opts?.batch) cost *= BATCH_DISCOUNT;
   return Math.round(cost * 1_000_000) / 1_000_000;
 }

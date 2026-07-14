@@ -30,8 +30,16 @@ export interface HealthInfo {
 }
 
 export type TaskWithStats = TaskInfo & {
+  enabled: boolean;
   stats: { avgTokens: number; avgCost: number; runs: number };
+  feedback: { up: number; down: number };
 };
+
+export interface NightlyStatus {
+  running: boolean;
+  lastRunAt: number | null;
+  lastResult: string | null;
+}
 
 export const api = {
   health: () => req<HealthInfo>("/api/health"),
@@ -40,6 +48,14 @@ export const api = {
   listScans: () => req<Scan[]>("/api/scans"),
   getScan: (id: string) => req<Scan>(`/api/scans/${id}`),
   deleteScan: (id: string) => req<{ ok: boolean }>(`/api/scans/${id}`, { method: "DELETE" }),
+  cancelScan: (id: string) => req<{ ok: boolean }>(`/api/scans/${id}/cancel`, { method: "POST" }),
+  setFeedback: (findingId: string, vote: "up" | "down" | null) =>
+    req<{ ok: boolean }>(`/api/findings/${findingId}/feedback`, {
+      method: "PUT",
+      body: JSON.stringify({ vote }),
+    }),
+  nightlyRun: () => req<{ started: boolean }>("/api/nightly/run", { method: "POST" }),
+  nightlyStatus: () => req<NightlyStatus>("/api/nightly/status"),
   findings: (id: string) => req<Finding[]>(`/api/scans/${id}/findings`),
   runs: (id: string) => req<AgentRun[]>(`/api/scans/${id}/runs`),
   report: (id: string, audience: ReportAudience) =>

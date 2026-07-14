@@ -32,6 +32,43 @@ export function useDeleteScan() {
   });
 }
 
+export function useCancelScan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.cancelScan(id),
+    onSuccess: (_d, id) => {
+      void qc.invalidateQueries({ queryKey: ["scans"] });
+      void qc.invalidateQueries({ queryKey: ["scan", id] });
+    },
+  });
+}
+
+export function useFeedback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ findingId, vote }: { findingId: string; scanId: string; vote: "up" | "down" | null }) =>
+      api.setFeedback(findingId, vote),
+    onSuccess: (_d, vars) => {
+      void qc.invalidateQueries({ queryKey: ["findings", vars.scanId] });
+      void qc.invalidateQueries({ queryKey: ["tasks"] });
+    },
+  });
+}
+
+export const useNightlyStatus = () =>
+  useQuery({ queryKey: ["nightly"], queryFn: api.nightlyStatus, refetchInterval: 10_000 });
+
+export function useNightlyRun() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.nightlyRun(),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["nightly"] });
+      void qc.invalidateQueries({ queryKey: ["scans"] });
+    },
+  });
+}
+
 export function useUpdateSettings() {
   const qc = useQueryClient();
   return useMutation({

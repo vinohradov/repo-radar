@@ -72,11 +72,19 @@ export const codeModernizationTask: Task<typeof CodeAnalysisOutput> = {
   outputSchema: CodeAnalysisOutput,
 
   async collect(ctx: CollectContext): Promise<CollectResult> {
-    const files = walkFiles(ctx.repoDir, {
+    let files = walkFiles(ctx.repoDir, {
       excludes: ctx.excludedPaths,
       exts: ALL_EXTS,
       maxFiles: 2500,
     });
+    // Incremental: only look at files changed since the last completed scan.
+    if (ctx.changedFiles !== null) {
+      const changed = new Set(ctx.changedFiles);
+      files = files.filter((f) => changed.has(rel(ctx.repoDir, f)));
+      if (files.length === 0) {
+        return { evidence: null, itemCount: 0, note: "No relevant files changed (incremental)" };
+      }
+    }
     const candidates: Candidate[] = [];
     let truncated = 0;
 

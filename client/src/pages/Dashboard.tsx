@@ -1,10 +1,21 @@
 import { useMemo, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Finding } from "@repo-radar/shared";
-import { useScans, useScan, useFindings, useCreateScan, useScanStream, useHealth, useDeleteScan } from "../api/hooks.js";
+import {
+  useScans,
+  useScan,
+  useFindings,
+  useRuns,
+  useCreateScan,
+  useScanStream,
+  useHealth,
+  useDeleteScan,
+  useCancelScan,
+  useTasks,
+} from "../api/hooks.js";
 import { useScanContext } from "../App.js";
 import { Card, StatTile, PillButton, FilterChip, EmptyState, Toast } from "../components/primitives.js";
-import { ScanProgress, SeverityHeatmap, IssuesChart, TokenUsageBar } from "../components/scan.js";
+import { ScanProgress, SeverityHeatmap, IssuesChart, TokenUsageBar, AgentRunsTable } from "../components/scan.js";
 
 export function Dashboard() {
   const navigate = useNavigate();
@@ -14,6 +25,7 @@ export function Dashboard() {
 
   const scan = useScan(effectiveId ?? undefined);
   const findings = useFindings(effectiveId ?? undefined);
+  const runs = useRuns(effectiveId ?? undefined);
   useScanStream(scan.data?.status === "running" || scan.data?.status === "queued" ? effectiveId ?? undefined : undefined);
 
   const [showForm, setShowForm] = useState(false);
@@ -27,6 +39,7 @@ export function Dashboard() {
 
   const createScan = useCreateScan();
   const deleteScan = useDeleteScan();
+  const cancelScan = useCancelScan();
 
   const filteredFindings = useMemo(() => {
     let f: Finding[] = findings.data ?? [];
@@ -49,6 +62,7 @@ export function Dashboard() {
     branch?: string;
     token?: string;
     label?: string;
+    config?: { enabledTasks?: string[] | null; incremental?: boolean };
   }) => {
     const created = await createScan.mutateAsync({ ...input });
     setSelectedScanId(created.id);
@@ -128,12 +142,23 @@ export function Dashboard() {
             <div className="stack">
               <Card title={`Scan progress — ${scan.data?.repoName ?? ""}`}>
                 {scan.data && <ScanProgress scan={scan.data} />}
+                {(scan.data?.status === "running" || scan.data?.status === "queued") && (
+                  <div style={{ marginTop: 10 }}>
+                    <button className="chip" onClick={() => cancelScan.mutate(scan.data!.id)}>
+                      ■ Cancel scan
+                    </button>
+                  </div>
+                )}
               </Card>
               <Card title="Token usage">
                 {scan.data && <TokenUsageBar scan={scan.data} />}
               </Card>
             </div>
           </div>
+
+          <Card title="Agent runs — tokens & cost per call">
+            <AgentRunsTable runs={runs.data ?? []} />
+          </Card>
 
           <div style={{ display: "flex", gap: 10 }}>
             <PillButton secondary onClick={() => navigate("/issues")}>
@@ -213,7 +238,14 @@ function ScanForm({
   onSubmit,
   pending,
 }: {
-  onSubmit: (i: { repoUrl?: string; localPath?: string; branch?: string; token?: string; label?: string }) => void;
+  onSubmit: (i: {
+    repoUrl?: string;
+    localPath?: string;
+    branch?: string;
+    token?: string;
+    label?: string;
+    config?: { enabledTasks?: string[] | null; incremental?: boolean };
+  }) => void;
   pending: boolean;
 }) {
   const [mode, setMode] = useState<"url" | "local">("url");
@@ -221,6 +253,26 @@ function ScanForm({
   const [branch, setBranch] = useState("");
   const [token, setToken] = useState("");
   const [label, setLabel] = useState("");
+  const [incremental, setIncremental] = useState(false);
+  const tasks = useTasks();
+  // null = not touched yet → follow the global defaults from the Agents page.
+  const [taskSel, setTaskSel] = useState<Record<string, boolean> | null>(null);
+
+  const effectiveSel: Record<string, boolean> = useMemo(() => {
+    if (taskSel) return taskSel;
+    return Object.fromEntries((tasks.data ?? []).map((t) => [t.id, t.enabled]));
+  }, [taskSel, tasks.data]);
+
+  const toggleTask = (id: string) => {
+    setTaskSel({ ...effectiveSel, [id]: !effectiveSel[id] });
+  };
+
+  const buildConfig = () => {
+    const cfg: { enabledTasks?: string[] | null; incremental?: boolean } = {};
+    if (taskSel) cfg.enabledTasks = Object.keys(taskSel).filter((id) => taskSel[id]);
+    if (incremental) cfg.incremental = true;
+    return Object.keys(cfg).length ? cfg : undefined;
+  };
 
   return (
     <Card className="" >
@@ -259,13 +311,35 @@ function ScanForm({
                     branch: branch.trim() || undefined,
                     token: token.trim() || undefined,
                     label: label.trim() || undefined,
+                    config: buildConfig(),
                   }
-                : { localPath: value.trim(), label: label.trim() || undefined },
+                : { localPath: value.trim(), label: label.trim() || undefined, config: buildConfig() },
             )
           }
         >
           {pending ? "Starting…" : "Run scan"}
         </PillButton>
+      </div>
+      <div className="row" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
+        {(tasks.data ?? []).map((t) => (
+          <button
+            key={t.id}
+            className={`chip ${effectiveSel[t.id] ? "active" : ""}`}
+            title={t.title}
+            onClick={() => toggleTask(t.id)}
+          >
+            {effectiveSel[t.id] ? "✓ " : ""}
+            {t.id}
+          </button>
+        ))}
+        <span style={{ width: 1, height: 24, background: "var(--rr-border)" }} />
+        <button
+          className={`chip ${incremental ? "active" : ""}`}
+          title="Only analyze files changed since the last completed scan of this repo"
+          onClick={() => setIncremental((v) => !v)}
+        >
+          {incremental ? "✓ " : ""}incremental
+        </button>
       </div>
       <div className="row" style={{ marginTop: 10, flexWrap: "wrap" }}>
         <input

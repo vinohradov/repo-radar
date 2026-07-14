@@ -18,6 +18,13 @@ export interface CollectContext {
   repoName: string;
   ecosystems: Ecosystem[];
   excludedPaths: string[];
+  /**
+   * Incremental scans: repo-relative paths changed since the last completed
+   * scan of this repo. Null = full scan (analyze everything).
+   */
+  changedFiles: string[] | null;
+  /** Aborts collector subprocesses/fetches when the scan is cancelled. */
+  signal?: AbortSignal;
 }
 
 /**

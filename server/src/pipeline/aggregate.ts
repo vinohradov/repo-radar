@@ -39,6 +39,8 @@ export function aggregate(
       confidence: nf.confidence,
       reference: nf.reference ?? null,
       fingerprint: fp,
+      validation: null,
+      feedback: null,
     };
     if (!existing || finding.confidence > existing.confidence) {
       byFp.set(fp, existing ? { ...finding, id: existing.id } : finding);

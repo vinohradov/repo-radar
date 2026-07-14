@@ -80,8 +80,14 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `);
 
-// Idempotent migration: add `label` to pre-existing scans tables.
-const scanCols = db.prepare("PRAGMA table_info(scans)").all() as { name: string }[];
-if (!scanCols.some((c) => c.name === "label")) {
-  db.exec("ALTER TABLE scans ADD COLUMN label TEXT");
+// Idempotent migrations for pre-existing databases.
+function addColumnIfMissing(table: string, column: string, ddl: string): void {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+  if (!cols.some((c) => c.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${ddl}`);
+  }
 }
+addColumnIfMissing("scans", "label", "label TEXT");
+addColumnIfMissing("scans", "commit_sha", "commit_sha TEXT");
+addColumnIfMissing("findings", "validation", "validation TEXT");
+addColumnIfMissing("findings", "feedback", "feedback TEXT");

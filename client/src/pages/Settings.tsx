@@ -1,19 +1,23 @@
 import { useEffect, useState } from "react";
 import type { AgentKind, Severity } from "@repo-radar/shared";
-import { useSettings, useUpdateSettings, useHealth } from "../api/hooks.js";
+import { useSettings, useUpdateSettings, useHealth, useNightlyStatus, useNightlyRun } from "../api/hooks.js";
 import { Card, PillButton, Toast } from "../components/primitives.js";
 
-const AGENTS: AgentKind[] = ["code", "security", "documentation", "reporting"];
+const AGENTS: AgentKind[] = ["code", "security", "documentation", "reporting", "validation"];
 const SEVERITIES: Severity[] = ["low", "medium", "high", "critical"];
 
 export function Settings() {
   const settings = useSettings();
   const health = useHealth();
   const update = useUpdateSettings();
+  const nightlyStatus = useNightlyStatus();
+  const nightlyRun = useNightlyRun();
 
   const [models, setModels] = useState<Record<string, string>>({});
   const [threshold, setThreshold] = useState<Severity>("low");
   const [excluded, setExcluded] = useState("");
+  const [nightlyEnabled, setNightlyEnabled] = useState(false);
+  const [nightlyHour, setNightlyHour] = useState(3);
   const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
@@ -21,6 +25,8 @@ export function Settings() {
       setModels(settings.data.models);
       setThreshold(settings.data.severityThreshold);
       setExcluded(settings.data.excludedPaths.join(", "));
+      setNightlyEnabled(settings.data.nightly.enabled);
+      setNightlyHour(settings.data.nightly.hourUtc);
     }
   }, [settings.data]);
 
@@ -31,6 +37,7 @@ export function Settings() {
       models,
       severityThreshold: threshold,
       excludedPaths: excluded.split(",").map((s) => s.trim()).filter(Boolean),
+      nightly: { enabled: nightlyEnabled, hourUtc: nightlyHour },
     });
     setToast("Settings saved");
     setTimeout(() => setToast(null), 2000);
@@ -92,6 +99,48 @@ export function Settings() {
             <div className="field">
               <label>Excluded paths (comma separated)</label>
               <input className="text-input" value={excluded} onChange={(e) => setExcluded(e.target.value)} />
+            </div>
+          </Card>
+
+          <Card title="Nightly scans (Batch API, 50% cost)">
+            <div className="switch-row" style={{ marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                id="nightly-enabled"
+                checked={nightlyEnabled}
+                onChange={(e) => setNightlyEnabled(e.target.checked)}
+              />
+              <label htmlFor="nightly-enabled">
+                Re-scan every known repo nightly via the Message Batches API
+              </label>
+            </div>
+            <div className="field">
+              <label>Run at (UTC hour)</label>
+              <select
+                className="select"
+                value={nightlyHour}
+                onChange={(e) => setNightlyHour(Number(e.target.value))}
+              >
+                {Array.from({ length: 24 }, (_, h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, "0")}:00 UTC
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="row" style={{ flexWrap: "wrap" }}>
+              <PillButton
+                secondary
+                disabled={nightlyRun.isPending || nightlyStatus.data?.running}
+                onClick={() => nightlyRun.mutate()}
+              >
+                {nightlyStatus.data?.running ? "Batch running…" : "Run now"}
+              </PillButton>
+              {nightlyStatus.data?.lastResult && (
+                <span className="muted" style={{ fontSize: "var(--rr-fs-300)" }}>
+                  {nightlyStatus.data.lastResult}
+                </span>
+              )}
             </div>
           </Card>
 

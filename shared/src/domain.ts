@@ -12,7 +12,7 @@ export const SEVERITY_ORDER: Record<Severity, number> = {
 };
 
 /** Which specialized agent produced a finding. */
-export const AgentKind = z.enum(["code", "security", "documentation", "reporting"]);
+export const AgentKind = z.enum(["code", "security", "documentation", "reporting", "validation"]);
 export type AgentKind = z.infer<typeof AgentKind>;
 
 /** Package ecosystems the collectors understand. */
@@ -20,11 +20,11 @@ export const Ecosystem = z.enum(["npm", "maven", "gradle", "pip", "unknown"]);
 export type Ecosystem = z.infer<typeof Ecosystem>;
 
 /** Lifecycle of a scan. */
-export const ScanStatus = z.enum(["queued", "running", "completed", "failed"]);
+export const ScanStatus = z.enum(["queued", "running", "completed", "failed", "cancelled"]);
 export type ScanStatus = z.infer<typeof ScanStatus>;
 
 /** Ordered pipeline phases; the UI renders these as a stepper. */
-export const PHASES = ["acquire", "collect", "analyze", "aggregate", "report"] as const;
+export const PHASES = ["acquire", "collect", "analyze", "aggregate", "validate", "report"] as const;
 export const Phase = z.enum(PHASES);
 export type Phase = z.infer<typeof Phase>;
 
@@ -39,6 +39,10 @@ export const ScanConfig = z.object({
   priority: z.enum(["low", "medium", "high"]).default("medium"),
   focusAreas: z.array(z.string()).default([]),
   excludedPaths: z.array(z.string()).default(["node_modules", "dist", "build", ".git", "coverage"]),
+  /** Explicit task selection for this scan. Null/absent = use include* flags minus globally disabled tasks. */
+  enabledTasks: z.array(z.string()).nullable().default(null),
+  /** Only analyze files changed since the last completed scan of the same repo. */
+  incremental: z.boolean().default(false),
 });
 export type ScanConfig = z.infer<typeof ScanConfig>;
 
@@ -100,6 +104,10 @@ export const Finding = z.object({
   confidence: z.number().min(0).max(1),
   reference: z.string().nullable().optional(),
   fingerprint: z.string(),
+  /** Verdict of the validation agent's re-check (null = not validated). */
+  validation: z.enum(["confirmed", "rejected"]).nullable().default(null),
+  /** User feedback on the finding's quality. */
+  feedback: z.enum(["up", "down"]).nullable().default(null),
 });
 export type Finding = z.infer<typeof Finding>;
 
@@ -112,6 +120,8 @@ export const Scan = z.object({
   branch: z.string().nullable(),
   status: ScanStatus,
   config: ScanConfig,
+  /** HEAD commit of the analyzed tree (baseline for incremental scans). */
+  commit: z.string().nullable().default(null),
   phases: z.record(Phase, PhaseState),
   scores: Scores.nullable(),
   usage: Usage,
@@ -171,6 +181,7 @@ export const ScanEvent = z.object({
     "scan:phase",
     "task:started",
     "task:done",
+    "task:failed",
     "scan:done",
     "scan:failed",
   ]),
@@ -183,11 +194,21 @@ export const ScanEvent = z.object({
 });
 export type ScanEvent = z.infer<typeof ScanEvent>;
 
+/** Nightly Batch-API scan schedule (50% cost). */
+export const NightlyConfig = z.object({
+  enabled: z.boolean().default(false),
+  hourUtc: z.number().min(0).max(23).default(3),
+});
+export type NightlyConfig = z.infer<typeof NightlyConfig>;
+
 /** Per-agent model settings editable on the Settings page. */
 export const Settings = z.object({
   models: z.record(AgentKind, z.string()),
   severityThreshold: Severity,
   excludedPaths: z.array(z.string()),
+  /** Task ids toggled off on the Agents page (skipped unless a scan explicitly enables them). */
+  disabledTasks: z.array(z.string()),
+  nightly: NightlyConfig,
   hasApiKey: z.boolean(),
 });
 export type Settings = z.infer<typeof Settings>;

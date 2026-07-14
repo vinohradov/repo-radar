@@ -24,6 +24,7 @@ interface ScanRow {
   branch: string | null;
   status: string;
   config: string;
+  commit_sha: string | null;
   phases: string;
   scores: string | null;
   usage: string;
@@ -43,6 +44,7 @@ function rowToScan(r: ScanRow): Scan {
     branch: r.branch,
     status: r.status as ScanStatus,
     config: JSON.parse(r.config) as ScanConfig,
+    commit: r.commit_sha,
     phases: JSON.parse(r.phases) as Record<Phase, PhaseState>,
     scores: r.scores ? (JSON.parse(r.scores) as Scores) : null,
     usage: JSON.parse(r.usage) as Usage,
@@ -56,8 +58,8 @@ function rowToScan(r: ScanRow): Scan {
 export const scansRepo = {
   insert(scan: Scan): void {
     db.prepare(
-      `INSERT INTO scans (id, repo_url, local_path, repo_name, label, branch, status, config, phases, scores, usage, finding_count, error, created_at, finished_at)
-       VALUES (@id, @repo_url, @local_path, @repo_name, @label, @branch, @status, @config, @phases, @scores, @usage, @finding_count, @error, @created_at, @finished_at)`,
+      `INSERT INTO scans (id, repo_url, local_path, repo_name, label, branch, status, config, commit_sha, phases, scores, usage, finding_count, error, created_at, finished_at)
+       VALUES (@id, @repo_url, @local_path, @repo_name, @label, @branch, @status, @config, @commit_sha, @phases, @scores, @usage, @finding_count, @error, @created_at, @finished_at)`,
     ).run({
       id: scan.id,
       repo_url: scan.repoUrl,
@@ -67,6 +69,7 @@ export const scansRepo = {
       branch: scan.branch,
       status: scan.status,
       config: JSON.stringify(scan.config),
+      commit_sha: scan.commit,
       phases: JSON.stringify(scan.phases),
       scores: scan.scores ? JSON.stringify(scan.scores) : null,
       usage: JSON.stringify(scan.usage),
@@ -80,10 +83,11 @@ export const scansRepo = {
   update(scan: Scan): void {
     db.prepare(
       `UPDATE scans SET status=@status, phases=@phases, scores=@scores, usage=@usage,
-        finding_count=@finding_count, error=@error, finished_at=@finished_at WHERE id=@id`,
+        finding_count=@finding_count, error=@error, finished_at=@finished_at, commit_sha=@commit_sha WHERE id=@id`,
     ).run({
       id: scan.id,
       status: scan.status,
+      commit_sha: scan.commit,
       phases: JSON.stringify(scan.phases),
       scores: scan.scores ? JSON.stringify(scan.scores) : null,
       usage: JSON.stringify(scan.usage),
@@ -125,6 +129,8 @@ interface FindingRow {
   confidence: number;
   reference: string | null;
   fingerprint: string;
+  validation: string | null;
+  feedback: string | null;
 }
 
 function rowToFinding(r: FindingRow): Finding {
@@ -143,6 +149,8 @@ function rowToFinding(r: FindingRow): Finding {
     confidence: r.confidence,
     reference: r.reference,
     fingerprint: r.fingerprint,
+    validation: r.validation as Finding["validation"],
+    feedback: r.feedback as Finding["feedback"],
   };
 }
 
@@ -182,6 +190,34 @@ export const findingsRepo = {
       .prepare("SELECT * FROM findings WHERE scan_id = ? ORDER BY confidence DESC")
       .all(scanId) as FindingRow[];
     return rows.map(rowToFinding);
+  },
+
+  get(id: string): Finding | null {
+    const row = db.prepare("SELECT * FROM findings WHERE id = ?").get(id) as FindingRow | undefined;
+    return row ? rowToFinding(row) : null;
+  },
+
+  setValidation(id: string, validation: "confirmed" | "rejected" | null): void {
+    db.prepare("UPDATE findings SET validation = ? WHERE id = ?").run(validation, id);
+  },
+
+  setFeedback(id: string, feedback: "up" | "down" | null): void {
+    db.prepare("UPDATE findings SET feedback = ? WHERE id = ?").run(feedback, id);
+  },
+
+  /** 👍/👎 tallies per task, across all scans — shown on the Agents page. */
+  feedbackByTask(): Record<string, { up: number; down: number }> {
+    const rows = db
+      .prepare(
+        `SELECT task_id,
+                SUM(CASE WHEN feedback = 'up' THEN 1 ELSE 0 END) AS up,
+                SUM(CASE WHEN feedback = 'down' THEN 1 ELSE 0 END) AS down
+         FROM findings WHERE feedback IS NOT NULL GROUP BY task_id`,
+      )
+      .all() as { task_id: string; up: number; down: number }[];
+    const out: Record<string, { up: number; down: number }> = {};
+    for (const r of rows) out[r.task_id] = { up: r.up, down: r.down };
+    return out;
   },
 };
 

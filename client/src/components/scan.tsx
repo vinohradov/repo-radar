@@ -1,6 +1,7 @@
 import { Fragment, useState } from "react";
-import type { Scan, Finding, Phase, AgentKind } from "@repo-radar/shared";
+import type { Scan, Finding, Phase, AgentKind, AgentRun } from "@repo-radar/shared";
 import { PHASES } from "@repo-radar/shared";
+import { useFeedback } from "../api/hooks.js";
 import { SeverityBadge, ConfidenceMeter } from "./primitives.js";
 
 /* ------------------------- Scan progress stepper ------------------------ */
@@ -109,10 +110,60 @@ export function TokenUsageBar({ scan }: { scan: Scan }) {
   );
 }
 
+/* --------------------------- Agent runs table --------------------------- */
+export function AgentRunsTable({ runs }: { runs: AgentRun[] }) {
+  if (runs.length === 0) {
+    return <div className="muted">Agent runs appear here once the analyze phase starts.</div>;
+  }
+  return (
+    <table className="tbl">
+      <thead>
+        <tr>
+          <th>Agent call</th>
+          <th style={{ width: 150 }}>Model</th>
+          <th style={{ width: 70 }}>Status</th>
+          <th style={{ width: 90 }}>Tokens</th>
+          <th style={{ width: 80 }}>Cost</th>
+          <th style={{ width: 80 }}>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {runs.map((r) => (
+          <tr key={r.id}>
+            <td>
+              <span style={{ fontWeight: 600 }}>{r.taskId}</span>
+              {r.detail && (
+                <div className="muted" style={{ fontSize: "var(--rr-fs-300)" }}>
+                  {r.detail}
+                </div>
+              )}
+            </td>
+            <td className="mono">{r.model.replace(/^claude-/, "")}</td>
+            <td>
+              <span className={`tag ${r.status === "ok" ? "status-completed" : r.status === "error" ? "status-failed" : ""}`}>
+                {r.status}
+              </span>
+            </td>
+            <td className="mono">{(r.inputTokens + r.outputTokens).toLocaleString()}</td>
+            <td className="mono">${r.costUsd.toFixed(4)}</td>
+            <td className="mono">{r.durationMs ? `${(r.durationMs / 1000).toFixed(1)}s` : "—"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 /* ------------------------------ Issues table ---------------------------- */
 export function IssuesTable({ findings }: { findings: Finding[] }) {
   const [open, setOpen] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const feedback = useFeedback();
+
+  const vote = (f: Finding, v: "up" | "down") => {
+    // Clicking the active vote clears it.
+    feedback.mutate({ findingId: f.id, scanId: f.scanId, vote: f.feedback === v ? null : v });
+  };
 
   const copyFix = (f: Finding) => {
     const text = `${f.title}\nFile: ${f.file ?? "—"}${f.line ? `:${f.line}` : ""}\nFix: ${f.suggestedFix}`;
@@ -149,7 +200,19 @@ export function IssuesTable({ findings }: { findings: Finding[] }) {
               <td>
                 <span className="tag">{f.agent}</span>
               </td>
-              <td>{f.title}</td>
+              <td>
+                {f.title}
+                {f.validation === "confirmed" && (
+                  <span className="tag validated" title="Re-checked and confirmed by the validation agent" style={{ marginLeft: 8 }}>
+                    ✓ validated
+                  </span>
+                )}
+                {f.validation === "rejected" && (
+                  <span className="tag rejected" title="Rejected by the validation agent as a likely false positive" style={{ marginLeft: 8 }}>
+                    ✕ rejected
+                  </span>
+                )}
+              </td>
               <td className="mono">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</td>
               <td>
                 <ConfidenceMeter value={f.confidence} />
@@ -173,9 +236,24 @@ export function IssuesTable({ findings }: { findings: Finding[] }) {
                         </a>
                       </div>
                     )}
-                    <div>
+                    <div className="row" style={{ gap: 8 }}>
                       <button className="chip" onClick={() => copyFix(f)}>
                         {copied === f.id ? "Copied ✓" : "Copy fix instruction"}
+                      </button>
+                      <span style={{ width: 1, height: 24, background: "var(--rr-border)" }} />
+                      <button
+                        className={`chip ${f.feedback === "up" ? "active" : ""}`}
+                        title="Good finding"
+                        onClick={() => vote(f, "up")}
+                      >
+                        👍
+                      </button>
+                      <button
+                        className={`chip ${f.feedback === "down" ? "active" : ""}`}
+                        title="Bad finding (false positive / not useful)"
+                        onClick={() => vote(f, "down")}
+                      >
+                        👎
                       </button>
                     </div>
                   </div>

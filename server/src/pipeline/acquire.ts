@@ -11,6 +11,8 @@ export interface Acquired {
   repoDir: string;
   repoName: string;
   ecosystems: Ecosystem[];
+  /** HEAD commit of the analyzed tree, when it is a git checkout. */
+  commit: string | null;
   cleanup: () => void;
 }
 
@@ -31,12 +33,54 @@ function deriveName(source: string): string {
   return base;
 }
 
+async function headCommit(dir: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync("git", ["-C", dir, "rev-parse", "HEAD"], {
+      timeout: 10_000,
+    });
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Files changed between `baseCommit` and the current HEAD, for incremental
+ * scans. For shallow clones the base commit is fetched on demand (GitHub &
+ * friends allow fetching arbitrary reachable SHAs). Returns null when the
+ * diff cannot be computed — the caller falls back to a full scan.
+ */
+export async function changedFilesSince(dir: string, baseCommit: string): Promise<string[] | null> {
+  const diff = async (): Promise<string[]> => {
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", dir, "diff", "--name-only", `${baseCommit}..HEAD`],
+      { timeout: 30_000, maxBuffer: 10 * 1024 * 1024 },
+    );
+    return stdout.split("\n").map((s) => s.trim()).filter(Boolean);
+  };
+  try {
+    return await diff();
+  } catch {
+    // Shallow clone without the base commit — try fetching just that SHA.
+    try {
+      await execFileAsync("git", ["-C", dir, "fetch", "--depth=1", "origin", baseCommit], {
+        timeout: 60_000,
+      });
+      return await diff();
+    } catch {
+      return null;
+    }
+  }
+}
+
 export async function acquire(input: {
   scanId: string;
   repoUrl?: string | null;
   localPath?: string | null;
   branch?: string | null;
   token?: string | null;
+  signal?: AbortSignal;
 }): Promise<Acquired> {
   if (input.localPath) {
     const resolved = path.resolve(input.localPath);
@@ -47,6 +91,7 @@ export async function acquire(input: {
       repoDir: resolved,
       repoName: deriveName(resolved),
       ecosystems: detectEcosystems(resolved),
+      commit: await headCommit(resolved),
       cleanup: () => {},
     };
   }
@@ -72,6 +117,7 @@ export async function acquire(input: {
     await execFileAsync("git", args, {
       timeout: 120_000,
       maxBuffer: 10 * 1024 * 1024,
+      signal: input.signal,
       env: {
         ...process.env,
         // Fail fast instead of hanging on a credential prompt (private HTTPS).
@@ -91,6 +137,19 @@ export async function acquire(input: {
     repoDir: dir,
     repoName: deriveName(input.repoUrl),
     ecosystems: detectEcosystems(dir),
+    commit: await headCommit(dir),
     cleanup: () => fs.rmSync(dir, { recursive: true, force: true }),
   };
+}
+
+/**
+ * Startup sweep: a crash mid-scan can orphan workspace/<scanId> checkouts —
+ * nothing references them across restarts, so clear the directory at boot.
+ */
+export function sweepWorkspace(): void {
+  try {
+    fs.rmSync(config.workspaceDir, { recursive: true, force: true });
+  } catch {
+    /* best effort */
+  }
 }

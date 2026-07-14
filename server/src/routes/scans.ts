@@ -1,8 +1,10 @@
 import type { FastifyInstance } from "fastify";
 import { CreateScanRequest, ScanConfig, type ReportAudience } from "@repo-radar/shared";
+import { z } from "zod";
 import { scansRepo, findingsRepo, reportsRepo, agentRunsRepo } from "../db/repositories.js";
 import { scanEvents } from "../events.js";
-import { newScan, runScan } from "../pipeline/runner.js";
+import { newScan, runScan, cancelScan, isScanActive } from "../pipeline/runner.js";
+import { runNightlyBatch, nightlyStatus } from "../pipeline/batch.js";
 
 export async function scanRoutes(app: FastifyInstance): Promise<void> {
   // Start a scan — the one-click action.
@@ -35,9 +37,40 @@ export async function scanRoutes(app: FastifyInstance): Promise<void> {
   app.delete<{ Params: { id: string } }>("/api/scans/:id", async (req, reply) => {
     const scan = scansRepo.get(req.params.id);
     if (!scan) return reply.code(404).send({ error: "Scan not found" });
+    // A running scan must actually STOP (in-flight API calls + child
+    // processes aborted) before its row disappears.
+    cancelScan(req.params.id);
     scansRepo.delete(req.params.id);
     return { ok: true };
   });
+
+  // Cancel a running scan without deleting its row.
+  app.post<{ Params: { id: string } }>("/api/scans/:id/cancel", async (req, reply) => {
+    const scan = scansRepo.get(req.params.id);
+    if (!scan) return reply.code(404).send({ error: "Scan not found" });
+    if (!isScanActive(req.params.id)) {
+      return reply.code(409).send({ error: "Scan is not running" });
+    }
+    cancelScan(req.params.id);
+    return { ok: true };
+  });
+
+  // 👍/👎 feedback on a finding (vote: "up" | "down" | null to clear).
+  app.put<{ Params: { id: string } }>("/api/findings/:id/feedback", async (req, reply) => {
+    const parsed = z.object({ vote: z.enum(["up", "down"]).nullable() }).safeParse(req.body);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.flatten() });
+    const finding = findingsRepo.get(req.params.id);
+    if (!finding) return reply.code(404).send({ error: "Finding not found" });
+    findingsRepo.setFeedback(req.params.id, parsed.data.vote);
+    return { ok: true, vote: parsed.data.vote };
+  });
+
+  // Nightly Batch-API scans: manual trigger (for demos) + status.
+  app.post("/api/nightly/run", async () => {
+    void runNightlyBatch();
+    return { started: true };
+  });
+  app.get("/api/nightly/status", async () => nightlyStatus());
 
   app.get<{ Params: { id: string } }>("/api/scans/:id/findings", async (req, reply) => {
     const scan = scansRepo.get(req.params.id);

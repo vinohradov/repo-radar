@@ -422,11 +422,12 @@ Ordered so there's a demoable slice at the end of every phase.
 - Cache-hit verification (`cache_read_input_tokens > 0` on second scan)
 - Empty/error states, scan history, README + demo script
 
-### Stretch (only if time remains)
-- **Validation agent** — re-checks findings with confidence < 0.7 (hallucination guard from spec)
-- **Incremental scans** — only changed files since last scan (`git diff --name-only`)
-- **Feedback loop** — 👍/👎 per finding, stored, shown on Agents page
-- **Batch API** nightly scans; multi-repo compare view
+### Stretch (only if time remains) — ✅ all implemented
+- [x] **Validation agent** — re-checks findings with confidence < 0.7 (hallucination guard from spec); rejected findings excluded from scores/reports
+- [x] **Incremental scans** — only changed files since last scan (`git diff --name-only` vs the stored commit; collectors gate on changed files)
+- [x] **Feedback loop** — 👍/👎 per finding, stored, shown on Agents page
+- [x] **Batch API** nightly scans (Message Batches, 50% cost, scheduler + manual trigger); multi-repo compare view (Compare page)
+- [x] Bonus: scan cancellation, reservation-based hard token budget, per-scan task toggles, maven/gradle/pip security collectors, real OSV severities, per-agent-model cost accounting, agent-runs breakdown in the UI
 
 ---
 

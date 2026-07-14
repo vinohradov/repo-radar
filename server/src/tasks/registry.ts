@@ -22,6 +22,7 @@ const AGENT_ENABLE_FLAG: Record<AgentKind, EnableFlag | null> = {
   code: "includeCodeQuality",
   documentation: "includeDocumentation",
   reporting: null,
+  validation: null,
 };
 
 export function tasksEnabledBy(config: Record<EnableFlag, boolean>): Task<z.ZodType>[] {
@@ -30,6 +31,23 @@ export function tasksEnabledBy(config: Record<EnableFlag, boolean>): Task<z.ZodT
     if (!flag) return false;
     return Boolean(config[flag]);
   });
+}
+
+/**
+ * Resolve the task set for one scan: an explicit per-scan selection wins;
+ * otherwise the include* flags apply, minus tasks toggled off globally on
+ * the Agents page.
+ */
+export function tasksForScan(
+  config: Record<EnableFlag, boolean> & { enabledTasks?: string[] | null },
+  disabledTasks: string[],
+): Task<z.ZodType>[] {
+  if (config.enabledTasks && config.enabledTasks.length > 0) {
+    const wanted = new Set(config.enabledTasks);
+    return TASKS.filter((t) => wanted.has(t.meta.id));
+  }
+  const disabled = new Set(disabledTasks);
+  return tasksEnabledBy(config).filter((t) => !disabled.has(t.meta.id));
 }
 
 export function taskInfos(): TaskInfo[] {

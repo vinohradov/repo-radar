@@ -7,6 +7,7 @@ import { AppShell } from "./components/AppShell.js";
 import { Dashboard } from "./pages/Dashboard.js";
 import { Issues } from "./pages/Issues.js";
 import { Reports } from "./pages/Reports.js";
+import { Compare } from "./pages/Compare.js";
 import { Agents } from "./pages/Agents.js";
 import { Settings } from "./pages/Settings.js";
 
@@ -84,6 +85,7 @@ export function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/issues" element={<Issues />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/compare" element={<Compare />} />
               <Route path="/agents" element={<Agents />} />
               <Route path="/settings" element={<Settings />} />
             </Routes>

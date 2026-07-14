@@ -11,13 +11,35 @@ See [`PLAN.md`](./PLAN.md) for the full design.
 
 ```
 acquire → collect (deterministic scripts, 0 tokens) → analyze (parallel agents)
-        → aggregate (dedupe + score) → report (human MD + agent JSON)
+        → aggregate (dedupe + score) → validate (re-check low-confidence findings)
+        → report (human MD + agent JSON)
 ```
 
 The **script-first** design is the point: cheap collector scripts gather compact
-evidence (npm audit / OSV, pattern scan, docs inventory), and the AI only reasons
-over that evidence — never raw file dumps. That, plus prompt caching, structured
-outputs, and per-task token caps, keeps AI usage small.
+evidence (npm audit / OSV across npm, Maven, Gradle and pip; pattern scan; docs
+inventory), and the AI only reasons over that evidence — never raw file dumps.
+That, plus prompt caching, structured outputs, and per-task token caps, keeps AI
+usage small.
+
+Beyond the core pipeline:
+
+- **Validation agent** — findings with confidence < 0.7 get an adversarial
+  re-check; rejected findings are excluded from scores and reports (hallucination
+  guard).
+- **Hard token budget** — each agent call reserves its `max_tokens` against a
+  per-scan cap before launching; calls that can't reserve are skipped, even with
+  all tasks running in parallel.
+- **Incremental scans** — re-scan only files changed since the last completed
+  scan of the same repo (`git diff` against the stored commit).
+- **Cancellation** — a running scan can be cancelled; in-flight API calls and
+  collector subprocesses are aborted.
+- **Task toggles** — turn tasks on/off globally (Agents page) or per scan
+  (chips in the scan form).
+- **Feedback loop** — 👍/👎 per finding, tallied per task on the Agents page.
+- **Nightly Batch-API scans** — re-scan every known repo on a schedule via the
+  Message Batches API at 50% cost (Settings page, plus a "Run now" button).
+- **Compare view** — latest full scan per repository side by side, worst health
+  first.
 
 ## Prerequisites
 
