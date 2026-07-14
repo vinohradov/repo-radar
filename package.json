@@ -1,0 +1,27 @@
+{
+  "name": "repo-radar",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-First Repository Analysis & Agent Orchestration Platform",
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "build:shared": "npm run build --workspace shared",
+    "dev": "npm run build:shared && concurrently -n server,client -c blue,magenta \"npm run dev --workspace server\" \"npm run dev --workspace client\"",
+    "dev:server": "npm run build:shared && npm run dev --workspace server",
+    "dev:client": "npm run dev --workspace client",
+    "build": "npm run build:shared && npm run build --workspace server && npm run build --workspace client",
+    "test": "npm run test --workspace server",
+    "typecheck": "npm run build:shared && npm run typecheck --workspace server && npm run typecheck --workspace client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

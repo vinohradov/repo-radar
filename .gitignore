@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.log
+.env
+.env.local
+data/
+workspace/
+*.sqlite
+*.sqlite-journal
+.DS_Store
+.idea/
+coverage/
