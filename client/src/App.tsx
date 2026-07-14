@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { Scan } from "@repo-radar/shared";
+import { useScans } from "./api/hooks.js";
 import { AppShell } from "./components/AppShell.js";
 import { Dashboard } from "./pages/Dashboard.js";
 import { Issues } from "./pages/Issues.js";
@@ -12,32 +14,70 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { refetchOnWindowFocus: false } },
 });
 
-/* A tiny selection context so Issues/Reports know which scan to show. */
-interface Selection {
-  selectedScanId: string | null;
+/**
+ * The single source of truth for "which scan am I working on".
+ * Every scan-scoped page (Dashboard / Issues / Reports) and the persistent
+ * ScanContextBar read the resolved scan from here instead of re-deriving
+ * their own fallback.
+ */
+interface ScanContextValue {
+  scans: Scan[];
+  /** Resolved scan: the user's explicit pick if it still exists, else the most recent. */
+  currentScan: Scan | null;
+  currentScanId: string | null;
+  /** True when the user explicitly picked the scan (vs defaulting to latest). */
+  isExplicit: boolean;
   setSelectedScanId: (id: string | null) => void;
 }
-const SelectionCtx = createContext<Selection>({ selectedScanId: null, setSelectedScanId: () => {} });
-export const useSelection = () => useContext(SelectionCtx);
+const ScanCtx = createContext<ScanContextValue>({
+  scans: [],
+  currentScan: null,
+  currentScanId: null,
+  isExplicit: false,
+  setSelectedScanId: () => {},
+});
+export const useScanContext = () => useContext(ScanCtx);
 
-function SelectionProvider({ children }: { children: ReactNode }) {
+function ScanContextProvider({ children }: { children: ReactNode }) {
+  const scansQuery = useScans();
   const [selectedScanId, setSelected] = useState<string | null>(
     () => localStorage.getItem("rr:selectedScan"),
   );
   useEffect(() => {
     if (selectedScanId) localStorage.setItem("rr:selectedScan", selectedScanId);
+    else localStorage.removeItem("rr:selectedScan");
   }, [selectedScanId]);
+
+  const scans = scansQuery.data ?? [];
+  const explicit = selectedScanId ? scans.find((s) => s.id === selectedScanId) ?? null : null;
+  const currentScan = explicit ?? scans[0] ?? null;
+
+  // A deleted scan can leave a stale id behind — clear it once the list is in.
+  useEffect(() => {
+    if (scansQuery.data && selectedScanId && !scansQuery.data.some((s) => s.id === selectedScanId)) {
+      setSelected(null);
+    }
+  }, [scansQuery.data, selectedScanId]);
+
   return (
-    <SelectionCtx.Provider value={{ selectedScanId, setSelectedScanId: setSelected }}>
+    <ScanCtx.Provider
+      value={{
+        scans,
+        currentScan,
+        currentScanId: currentScan?.id ?? null,
+        isExplicit: explicit !== null,
+        setSelectedScanId: setSelected,
+      }}
+    >
       {children}
-    </SelectionCtx.Provider>
+    </ScanCtx.Provider>
   );
 }
 
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <SelectionProvider>
+      <ScanContextProvider>
         <BrowserRouter>
           <AppShell>
             <Routes>
@@ -49,7 +89,7 @@ export function App() {
             </Routes>
           </AppShell>
         </BrowserRouter>
-      </SelectionProvider>
+      </ScanContextProvider>
     </QueryClientProvider>
   );
 }

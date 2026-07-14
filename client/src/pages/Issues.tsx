@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import type { Finding, Severity, AgentKind } from "@repo-radar/shared";
-import { useScans, useFindings } from "../api/hooks.js";
-import { useSelection } from "../App.js";
+import { useFindings } from "../api/hooks.js";
+import { useScanContext } from "../App.js";
 import { Card, FilterChip, EmptyState } from "../components/primitives.js";
 import { IssuesTable } from "../components/scan.js";
 
@@ -9,9 +9,7 @@ const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const AGENTS: AgentKind[] = ["security", "code", "documentation"];
 
 export function Issues() {
-  const scans = useScans();
-  const { selectedScanId, setSelectedScanId } = useSelection();
-  const effectiveId = selectedScanId ?? scans.data?.[0]?.id ?? null;
+  const { currentScan, currentScanId: effectiveId } = useScanContext();
   const findings = useFindings(effectiveId ?? undefined);
 
   const [sev, setSev] = useState<Set<Severity>>(new Set());
@@ -46,23 +44,11 @@ export function Issues() {
         <div>
           <div className="page-title">Issues</div>
           <div className="page-sub">
-            {effectiveId ? `${findings.data?.length ?? 0} findings in the selected scan` : "No scan selected"}
+            {currentScan
+              ? `${findings.data?.length ?? 0} findings in ${currentScan.repoName}`
+              : "No scan selected"}
           </div>
         </div>
-        {scans.data && scans.data.length > 0 && (
-          <select
-            className="select"
-            value={effectiveId ?? ""}
-            onChange={(e) => setSelectedScanId(e.target.value)}
-          >
-            {scans.data.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.repoName}
-                {s.label ? ` — ${s.label}` : ""} · {s.status}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
       {!effectiveId ? (

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
+import { ScanContextBar } from "./ScanContextBar.js";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
@@ -9,7 +10,11 @@ const NAV = [
   { to: "/settings", label: "Settings" },
 ];
 
+/* Pages whose content is scoped to one scan and therefore show the context bar. */
+const SCAN_SCOPED = new Set(["/", "/issues", "/reports"]);
+
 export function AppShell({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
   return (
     <div className="app-shell">
       <nav className="sidenav">
@@ -28,7 +33,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </NavLink>
         ))}
       </nav>
-      <main className="content">{children}</main>
+      <main className="content">
+        {SCAN_SCOPED.has(pathname) && <ScanContextBar />}
+        {children}
+      </main>
     </div>
   );
 }

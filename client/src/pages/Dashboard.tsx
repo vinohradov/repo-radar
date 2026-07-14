@@ -2,7 +2,7 @@ import { useMemo, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import type { Finding } from "@repo-radar/shared";
 import { useScans, useScan, useFindings, useCreateScan, useScanStream, useHealth, useDeleteScan } from "../api/hooks.js";
-import { useSelection } from "../App.js";
+import { useScanContext } from "../App.js";
 import { Card, StatTile, PillButton, FilterChip, EmptyState, Toast } from "../components/primitives.js";
 import { ScanProgress, SeverityHeatmap, IssuesChart, TokenUsageBar } from "../components/scan.js";
 
@@ -10,10 +10,8 @@ export function Dashboard() {
   const navigate = useNavigate();
   const health = useHealth();
   const scans = useScans();
-  const { selectedScanId, setSelectedScanId } = useSelection();
+  const { currentScanId: effectiveId, setSelectedScanId } = useScanContext();
 
-  // default selection = most recent scan
-  const effectiveId = selectedScanId ?? scans.data?.[0]?.id ?? null;
   const scan = useScan(effectiveId ?? undefined);
   const findings = useFindings(effectiveId ?? undefined);
   useScanStream(scan.data?.status === "running" || scan.data?.status === "queued" ? effectiveId ?? undefined : undefined);
@@ -59,10 +57,11 @@ export function Dashboard() {
     setTimeout(() => setToast(null), 2500);
   };
 
+  // Deleting the currently-viewed scan is fine: the scan context clears the
+  // stale selection and falls back to the most recent scan on its own.
   const removeScan = async (e: MouseEvent, id: string) => {
     e.stopPropagation();
     await deleteScan.mutateAsync(id);
-    if (selectedScanId === id) setSelectedScanId(null);
   };
 
   const fmtTime = (ms: number) =>
@@ -175,6 +174,9 @@ export function Dashboard() {
                     <div style={{ fontWeight: 600 }}>
                       {s.repoName}
                       {s.label && <span className="tag" style={{ marginLeft: 8 }}>{s.label}</span>}
+                      {s.id === effectiveId && (
+                        <span className="tag viewing" style={{ marginLeft: 8 }}>● viewing</span>
+                      )}
                     </div>
                     <div className="mono">{s.repoUrl ?? s.localPath}</div>
                   </td>

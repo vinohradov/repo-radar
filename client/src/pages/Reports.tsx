@@ -1,16 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { ReportAudience } from "@repo-radar/shared";
-import { useScans } from "../api/hooks.js";
 import { api } from "../api/client.js";
-import { useSelection } from "../App.js";
+import { useScanContext } from "../App.js";
 import { Card, PillButton, EmptyState } from "../components/primitives.js";
 import { MarkdownView, JsonView } from "../components/ReportViewer.js";
 
 export function Reports() {
-  const scans = useScans();
-  const { selectedScanId, setSelectedScanId } = useSelection();
-  const effectiveId = selectedScanId ?? scans.data?.[0]?.id ?? null;
+  const { currentScan, currentScanId: effectiveId } = useScanContext();
   const [audience, setAudience] = useState<ReportAudience>("human");
   const [copied, setCopied] = useState(false);
 
@@ -34,18 +31,12 @@ export function Reports() {
       <div className="page-header">
         <div>
           <div className="page-title">Reports</div>
-          <div className="page-sub">Human-readable summary and the machine fix-manifest for a fixing agent</div>
+          <div className="page-sub">
+            {currentScan
+              ? `Human summary and machine fix-manifest for ${currentScan.repoName}`
+              : "Human-readable summary and the machine fix-manifest for a fixing agent"}
+          </div>
         </div>
-        {scans.data && scans.data.length > 0 && (
-          <select className="select" value={effectiveId ?? ""} onChange={(e) => setSelectedScanId(e.target.value)}>
-            {scans.data.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.repoName}
-                {s.label ? ` — ${s.label}` : ""} · {s.status}
-              </option>
-            ))}
-          </select>
-        )}
       </div>
 
       {!effectiveId ? (
